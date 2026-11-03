@@ -7,6 +7,8 @@ format:
 editor: visual
 ---
 
+The link to the GitHub repository of this assignment is: https://github.com/Lwei493/Homework4
+
 # Problem 1
 
 load the nzelect dataset.
