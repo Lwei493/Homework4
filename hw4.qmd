@@ -1,0 +1,314 @@
+---
+title: "hw4"
+author: "Lai Wei"
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+# Problem 1
+
+load the nzelect dataset.
+
+```{r}
+library(tidyverse)
+
+nzge <- readRDS("nzge.rds")
+```
+
+## a.
+
+Generate a table (which can just be a nicely printed tibble) of vote count (regardless of party) per year/type. Make sure to sort it by vote count.
+
+```{r}
+#| message: false
+(table_1a <- nzge %>%
+  group_by(election_year, voting_type) %>%
+  summarise(total_votes = sum(votes, na.rm = TRUE)) %>%
+  ungroup() %>%
+  arrange(desc(total_votes)))
+```
+
+The table is sorted by total votes in descending order.
+
+The 2014 election had the largest total vote count, while 2002 had the smallest among the listed years.
+
+In every year, the Party vote total is slightly higher than the Candidate vote total.
+
+## b.
+
+Focus only on the 2014 election. Report the proportion of votes for each party in the Candidate election. Again, produce a nice table and sort it by percent of vote.
+
+```{r}
+table_1b <- nzge %>%
+  filter(election_year == 2014, voting_type == "Candidate") %>%
+  group_by(party) %>%
+  summarise(total_votes = sum(votes, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(percent_vote = total_votes / sum(total_votes) * 100
+  ) %>%
+  arrange(desc(percent_vote)) %>%
+  mutate(percent_vote = sprintf("%.4f", percent_vote))
+
+print(table_1b, n = Inf)
+```
+
+In the 2014 Candidate vote, the National Party received the largest share at 45.54%, followed by the Labour Party at 33.73%.
+
+National and Labour accounted for about 79% of all candidate votes, while most minor parties received less than 1% each.
+
+## c.
+
+Produce a nice table indicating, for each year, which party won the Candidate vote and which party won the Party vote.
+
+```{r}
+(table_1c <- nzge %>%
+  group_by(election_year, voting_type, party) %>%
+  summarise(total_votes = sum(votes, na.rm = TRUE), .groups = "drop") %>%
+   
+  group_by(election_year, voting_type) %>%
+  filter(total_votes == max(total_votes)) %>%
+  ungroup() %>%
+   
+  select(election_year, voting_type, party) %>%
+   
+  pivot_wider(names_from = voting_type, values_from = party) %>%
+
+  arrange(election_year))
+```
+
+Labour won both the Candidate and Party votes in 2002.
+
+In 2005, National won the Candidate vote while Labour won the Party vote.
+
+From 2008 onward, National won both the Candidate and Party votes.
+
+# Problem 2
+
+```{r}
+library(tidyverse)
+
+atp <- read_csv("C:/Users/wl264/Documents/Homework4/atp_matches_2019.csv", show_col_types = FALSE)
+```
+
+## a.
+
+How many tournaments took place in 2019?
+
+```{r}
+(table_2a <- atp %>%
+  summarise(number_of_tournaments = length(unique(tourney_id))))
+```
+
+There were 128 distinct tournaments in the 2019.
+
+## b.
+
+Did any player win more than one tournament?
+
+If so, how many players won more than one tournament
+
+how many tournaments did the most winning player(s) win?
+
+```{r}
+table_2b <- atp %>% 
+  filter(round == "F") %>%
+  group_by(winner_name, tourney_id) %>% 
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(winner_name) %>% 
+  summarise(number = n()) %>% 
+  ungroup()
+
+table_2b %>% 
+  filter(number > 1) %>% 
+  summarise(players_won_more_than_one = n())
+
+table_2b %>% 
+  filter(number == max(number)) %>% 
+  arrange(number)
+```
+
+Twelve players won more than one tournament, and Dominic Thiem and Novak Djokovic tied for the most wins, with 5 tournaments each.
+
+## c.
+
+Is there any evidence that winners have more aces than losers?
+
+(If you address this with a hypothesis test, do not use base R functionality - continue to remain in the Tidyverse.)
+
+```{r}
+table_2c <- atp %>% 
+  drop_na(w_ace, l_ace) %>% 
+  with(t.test(w_ace, l_ace, paired = TRUE, alternative = "greater"))
+
+tibble(
+  difference = table_2c$estimate,
+  p_value = table_2c$p.value,
+  conf_low = table_2c$conf.int[1],
+  conf_high = table_2c$conf.int[2]
+)
+```
+
+Yes, there is extremely strong evidence that winners have more aces than losers.
+
+P-value: The p-value is vastly smaller than any standard significance level. This means we reject the null hypothesis.
+
+Difference in Means: The estimated average difference is 1.70. Since the test is w_ace - l_ace, this indicates that winners average 1.70 more aces than losers in the same matches.
+
+## d.
+
+Identify the player(s) with the highest win-rate.
+
+(Note that this is NOT asking for the highest number of wins.) Restrict to players with at least 5 matches.
+
+```{r}
+(table_2d <- atp %>% 
+  select(winner_name, loser_name) %>% 
+  pivot_longer(cols = everything(), names_to = "result", values_to = "player") %>% 
+  mutate(win = if_else(result == "winner_name", 1, 0)) %>% 
+   
+  group_by(player) %>% 
+  summarise(numbers  = n(), wins = sum(win), win_rate = wins / numbers) %>% 
+  ungroup() %>%
+   
+  filter(numbers >= 5) %>% 
+  arrange(desc(win_rate)) %>% 
+  head(1))
+```
+
+Among players with at least 5 matches, Rafael Nadal had the highest win rate.
+
+He won 60 of 69 matches, for a win rate of about 87.0%.
+
+# Problem 3
+
+```{r}
+library(tidyverse)
+
+covid <- read_csv("https://raw.githubusercontent.com/nytimes/covid-19-data/master/rolling-averages/us-states.csv", show_col_types = FALSE)
+```
+
+## a.
+
+How many major and minor spikes in cases were there?
+
+```{r}
+table_3a <- covid %>%
+  group_by(date) %>%
+  summarise(total_cases_avg = sum(cases_avg, na.rm = TRUE))
+
+table_3a %>%
+  ggplot(aes(x = date, y = total_cases_avg)) +
+  geom_line(color = "darkblue", linewidth = 1) +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "6 months", expand = expansion(mult = c(0.02, 0.05)) ) +
+  scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) + 
+  labs(
+    title = "US Daily New COVID-19 Cases (7-Day Rolling Average)",
+    subtitle = "Identifying major and minor spikes over time",
+    x = "Date",
+    y = "Daily New Cases (7-Day Avg)"
+  ) +
+  theme_minimal(base_size = 12) + 
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5 , size = 14),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+
+The plot shows several major and minor spikes in daily COVID-19 cases over time.
+
+The most prominent increases occurred during the winter of 2020–2021, and the winter of 2021–2022.
+
+Additional increases occurred during the autumn of 2021, the summer of 2022 and the winter of 2022–2023.
+
+Smaller fluctuations can also be observed between these major waves.
+
+## b.
+
+For the states with the highest and lowest overall rates per population, what differences do you see in their trajectories over time?
+
+```{r}
+state_rates <- covid %>%
+  group_by(state) %>%
+  summarize(overall_rate = sum(cases_avg_per_100k, na.rm = TRUE)) %>%
+  arrange(desc(overall_rate))
+
+highest_state <- state_rates$state[1]
+lowest_state <- state_rates$state[nrow(state_rates)]
+
+filter_data <- covid %>%
+  filter(state %in% c(highest_state, lowest_state))
+
+table_3b <- ggplot(filter_data, aes(x = date, y = cases_avg_per_100k, color = state)) +
+  geom_line(linewidth = 1) +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "6 months") +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE)) + 
+  scale_color_manual(values = c("darkred", "darkblue")) +
+  labs(
+    title = paste("COVID-19 Trajectories: Highest vs. Lowest Rates"),
+    subtitle = paste(highest_state, "(Highest) vs.", lowest_state, "(Lowest)"),
+    x = "Date",
+    y = "Daily New Cases (7-Day Avg per 100k)",
+    color = "State",
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5 , size = 14),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+print(table_3b)
+```
+
+Differences in Trajectories:
+
+While both states follow similar national trends, the magnitude is drastically different. Rhode Island's peaks are much higher and sharper, especially in early 2022, where it reached over 500 daily cases per 100k. In contrast, Maine's curve is much flatter, peaking at less than 100.
+
+## c.
+
+Identify, to the best of your ability without a formal test, the first five states to experience Covid in a substantial way.
+
+```{r}
+substantial_date <- covid %>%
+  filter(cases_avg >= 100) %>%
+  group_by(state) %>%
+  summarize(first_date = min(date)) %>%
+  arrange(first_date) %>%
+  head(5)
+
+first_5_states <- substantial_date$state
+
+early_data <- covid %>%
+  filter(state %in% first_5_states, date <= as.Date("2020-07-01"))
+
+table_3c <- ggplot(early_data, aes(x = date, y = cases_avg, color = state)) +
+  geom_line(linewidth = 1) +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 month") +
+  scale_y_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) + 
+  labs(
+    title = "The First Five States to Experience Substantial COVID-19",
+    subtitle = "Based on the date they first reached a 7-day average of 100 cases",
+    x = "Date (Early 2020)",
+    y = "Average Daily New Cases",
+    color = "State",
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5 , size = 14),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+
+print(table_3c)
+```
+
+Identify the first five states:
+
+Based on the data, the first five states to experience COVID-19 in a "substantial way" are New York, New Jersey, California, Michigan, Washington.
+
+To define "substantial," I used a threshold of a 7-day average of at least 100 daily new cases. As illustrated in the plot, all five states crossed this threshold between March and April 2020.
+
+However, the chart reveals a massive divergence in their trajectories. While New York experienced an explosive surge reaching nearly 10,000 cases, the other four states remained significantly flatter during the initial wave. Additionally, California showed an early resurgence by July.
